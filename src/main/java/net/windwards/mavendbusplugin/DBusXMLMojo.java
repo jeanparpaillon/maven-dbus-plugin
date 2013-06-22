@@ -4,18 +4,43 @@ import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.project.MavenProject;
 import org.freedesktop.dbus.bin.CreateInterface;
+import org.freedesktop.dbus.exceptions.DBusException;
+import org.xml.sax.SAXException;
 
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.PrintStream;
 
 /**
- * Says "Hi" to the user.
+ * Transform a DBus interface XML into Java sources. This maven plugin is an
+ * interface on CreateInterface from dbus-java. Tested with dbus-java version
+ * 2.8.
  *
  * @goal generate
  * @phase generate-sources
  */
 public class DBusXMLMojo extends AbstractMojo {
+
+    public static class FileStreamFactory extends CreateInterface.PrintStreamFactory {
+        File targetdir;
+
+        public FileStreamFactory(String targetdir) {
+            this.targetdir = new File(targetdir);
+        }
+
+        public void init(String file, String path) {
+            new File(targetdir, path).mkdirs();
+        }
+
+        public PrintStream createPrintStream(final String file) throws IOException {
+            File output = new File(targetdir, file);
+            return new PrintStream(new FileOutputStream(output));
+        }
+    }
 
     /**
      * @parameter expression="${project}"
@@ -30,7 +55,6 @@ public class DBusXMLMojo extends AbstractMojo {
      * @parameter default-value="${basedir}/src/main/dbus"
      */
     private File interfaces;
-
 
     /**
      * The directory to output the generated sources to.
@@ -55,13 +79,25 @@ public class DBusXMLMojo extends AbstractMojo {
         this.project.addCompileSourceRoot(path);
 
         for(File iface : interfaces.listFiles(xmlFiles)) {
-            CreateInterface.PrintStreamFactory factory =
-                    new CreateInterface.FileStreamFactory(path);
+            FileStreamFactory factory = new FileStreamFactory(path);
             CreateInterface createInterface = new CreateInterface(factory, false);
+            FileReader input = null;
             try {
-                createInterface.createInterface(new FileReader(iface));
-            } catch (Exception e) {
-                throw new MojoExecutionException("Failed to generate sources from interface description", e);
+                input = new FileReader(iface);
+            } catch (IOException e) {
+                throw new MojoExecutionException("Could not read interface " +
+                        "XML from " + iface.getPath(), e);
+            }
+            try {
+                createInterface.createInterface(input);
+            } catch (ParserConfigurationException e) {
+                throw new MojoExecutionException("dbus-java internal error on XML parser", e);
+            } catch (SAXException e) {
+                throw new MojoExecutionException("Malformatted interface XML", e);
+            } catch (IOException e) {
+                throw new MojoExecutionException("Failed to write java source", e);
+            } catch (DBusException e) {
+                throw new MojoExecutionException("DBus error", e);
             }
         }
     }
