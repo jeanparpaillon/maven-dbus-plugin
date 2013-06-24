@@ -54,7 +54,7 @@ public class DBusXMLMojo extends AbstractMojo {
      *
      * @parameter default-value="${basedir}/src/main/dbus"
      */
-    private File interfaces;
+    private String interfaces;
 
     /**
      * The directory to output the generated sources to.
@@ -78,7 +78,20 @@ public class DBusXMLMojo extends AbstractMojo {
         String path = output.getPath();
         this.project.addCompileSourceRoot(path);
 
-        for(File iface : interfaces.listFiles(xmlFiles)) {
+        File ifacedir = new File(interfaces);
+
+        if(!ifacedir.exists()) {
+            getLog().warn("Directory does not exist: " + interfaces);
+            return;
+        }
+        File[] interfaceFiles = ifacedir.listFiles(xmlFiles);
+
+        if (interfaceFiles.length == 0) {
+            getLog().warn("There are no interfaces in " + interfaces);
+            return;
+        }
+
+        for(File iface : interfaceFiles) {
             FileStreamFactory factory = new FileStreamFactory(path);
             CreateInterface createInterface = new CreateInterface(factory, false);
             FileReader input = null;
